@@ -1,0 +1,521 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Slot Machine 🎰</title>
+<style>
+  :root{
+    --cell: 110px;           /* symbol cell size */
+    --gap: 14px;
+    --machine-pad: 18px;
+    --radius: 18px;
+    --bg:#0b0f1a;
+    --panel:#121a2a;
+    --metal:#1f2c45;
+    --accent:#39ffb6;
+    --accent2:#ffde59;
+    --text:#e9f1ff;
+    --muted:#9cb3d8;
+    --danger:#ff6b7a;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%;}
+  body{
+    margin:0;
+    background: radial-gradient(1200px 600px at 70% -20%, #1b2a48 0%, #0b0f1a 50%, #05070c 100%);
+    color:var(--text);
+    font:16px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, "Helvetica Neue", Arial, Noto Sans, "Apple Color Emoji","Segoe UI Emoji";
+    display:grid;
+    place-items:center;
+  }
+
+  .wrap{
+    width:min(1000px, 96vw);
+    padding:24px;
+  }
+
+  h1{
+    margin:0 0 10px;
+    font-weight:800;
+    letter-spacing:.5px;
+  }
+  .sub{color:var(--muted); margin-bottom:18px}
+
+  .machine{
+    background: linear-gradient(180deg, #0f1524, #0a0f1d);
+    border:2px solid #213153;
+    border-radius:var(--radius);
+    padding:var(--machine-pad);
+    box-shadow: 0 10px 30px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.06);
+  }
+
+  .display{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    background:linear-gradient(180deg,#14203a,#0e1527);
+    border:1px solid #223355;
+    border-radius:12px;
+    padding:12px 14px;
+    margin-bottom:14px;
+  }
+  .meters{
+    display:flex; gap:16px; flex-wrap:wrap;
+  }
+  .meter{
+    background: #0a1326;
+    border:1px solid #1b2a49;
+    border-radius:10px;
+    padding:10px 12px;
+    min-width:140px;
+  }
+  .label{font-size:12px; color:var(--muted); margin-bottom:6px}
+  .value{font-weight:800; font-size:22px; letter-spacing:.5px}
+
+  .controls{
+    display:flex; gap:10px; align-items:center; flex-wrap:wrap;
+  }
+  button, select, input[type="number"]{
+    background:#0c1630;
+    border:1px solid #1e2c4b;
+    color:var(--text);
+    padding:10px 14px;
+    border-radius:10px;
+    font-weight:700;
+  }
+  button.primary{
+    background:linear-gradient(180deg,#0cf1a8,#00c07f);
+    color:#032b1d; border:none;
+    text-shadow:0 1px 0 rgba(255,255,255,.35);
+    box-shadow:0 6px 16px rgba(57,255,182,.35);
+  }
+  button.primary:disabled{filter:saturate(.2) brightness(.8); cursor:not-allowed}
+  button.warn{background:#261018;border:1px solid #4a1b2a;color:#ffc7cf}
+  button:hover{filter:brightness(1.05)}
+  button:active{transform:translateY(1px)}
+
+  .reels{
+    display:flex; gap:var(--gap);
+    padding:16px;
+    background:linear-gradient(180deg,#0a1122,#070d1a);
+    border:1px solid #1b2947;
+    border-radius:14px;
+    position:relative;
+  }
+  .reel{
+    width:var(--cell);
+    height:calc(var(--cell) * 3 + 8px); /* tiny bleed to hide seams */
+    overflow:hidden;
+    border-radius:12px;
+    border:1px solid #1c2948;
+    background: #040815;
+    position:relative;
+    box-shadow: inset 0 0 30px rgba(0,0,0,.6);
+  }
+  .strip{
+    position:absolute; left:0; top:0; width:100%;
+    will-change: transform;
+  }
+  .symbol{
+    width:100%;
+    height:var(--cell);
+    display:grid; place-items:center;
+    font-size:60px;
+    user-select:none;
+    text-shadow: 0 6px 10px rgba(0,0,0,.35);
+  }
+  /* guide line for the payline (center row) */
+  .payline{
+    position:absolute; left:10px; right:10px; top:calc(var(--cell) + var(--machine-pad) + 16px + 16px);
+    height:0; pointer-events:none;
+  }
+  .payline::after{
+    content:"";
+    position:absolute; left:0; right:0; top:calc(var(--cell) + 6px);
+    border-top:2px dashed rgba(255,222,89,.5);
+    filter:drop-shadow(0 0 6px rgba(255,222,89,.35));
+  }
+
+  .message{
+    text-align:center;
+    margin-top:12px;
+    min-height:28px;
+    font-weight:800;
+    letter-spacing:.4px;
+  }
+  .win{
+    color:var(--accent2);
+    animation: pulse 0.8s ease-in-out 0s 4;
+    text-shadow:0 0 14px rgba(255,222,89,.35);
+  }
+  @keyframes pulse{
+    0%,100%{transform:scale(1); filter:brightness(1)}
+    50%{transform:scale(1.05); filter:brightness(1.2)}
+  }
+
+  /* Confetti canvas sits over machine when win happens */
+  canvas#confetti{
+    position:absolute; inset:0; pointer-events:none;
+  }
+
+  .foot{
+    color:var(--muted);
+    font-size:12px;
+    margin-top:10px;
+    text-align:center;
+  }
+
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Lucky Spin Slots <span style="font-size:.6em; color:#9cb3d8">— 3×3, center payline</span></h1>
+    <div class="sub">Click SPIN to watch the reels animate and (hopefully) shower you with virtual riches.</div>
+
+    <div class="machine" id="machine">
+      <div class="display">
+        <div class="meters">
+          <div class="meter">
+            <div class="label">Balance</div>
+            <div class="value" id="balance">$1,000</div>
+          </div>
+          <div class="meter">
+            <div class="label">Bet per Spin</div>
+            <div class="value" id="betLabel">$10</div>
+          </div>
+          <div class="meter">
+            <div class="label">Last Win</div>
+            <div class="value" id="lastWin">$0</div>
+          </div>
+        </div>
+        <div class="controls">
+          <label class="label" for="bet">Bet</label>
+          <input id="bet" type="number" min="1" max="500" step="1" value="10" style="width:90px">
+          <button id="spin" class="primary">🎲 SPIN</button>
+          <button id="max" class="warn">MAX BET</button>
+          <button id="add" title="Add play money">+$100</button>
+        </div>
+      </div>
+
+      <div class="reels" id="reels">
+        <div class="reel"><div class="strip"></div></div>
+        <div class="reel"><div class="strip"></div></div>
+        <div class="reel"><div class="strip"></div></div>
+        <canvas id="confetti"></canvas>
+      </div>
+      <div class="payline"></div>
+
+      <div class="message" id="message">Good luck!</div>
+      <div class="foot">Payouts (3 on center line): 7️⃣×20, 💎×10, 🍀×8, ⭐×6, 🔔×5, 🍇×4, 🍒×3, 🍋×2</div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  // --- CONFIG ---
+  const SYMBOLS = ["🍒","🍋","🔔","⭐","🍀","💎","7️⃣","🍇"];
+  const PAYOUTS = { "7️⃣":20, "💎":10, "🍀":8, "⭐":6, "🔔":5, "🍇":4, "🍒":3, "🍋":2 };
+  const REEL_COUNT = 3;
+  const VISIBLE = 3;
+  const CELL = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--cell"));
+  const STRIP_REPEAT = 24;         // how many times to repeat symbol strip (smooth spin)
+  const MIN_SPIN_MS = [1400, 1800, 2200]; // staggered stop times per reel
+  const DECEL = 0.0009;            // deceleration (px/ms^2)
+  const START_SPEED = 2.6;         // px/ms initial speed
+  const CLICK_SAFETY_MS = 250;     // prevent spam clicking
+
+  // --- STATE ---
+  let balance = 1000;
+  let lastWin = 0;
+  let spinning = false;
+  let lastClickAt = 0;
+
+  // --- DOM ---
+  const balanceEl = document.getElementById("balance");
+  const lastWinEl = document.getElementById("lastWin");
+  const betInput = document.getElementById("bet");
+  const betLabel = document.getElementById("betLabel");
+  const spinBtn = document.getElementById("spin");
+  const maxBtn = document.getElementById("max");
+  const addBtn = document.getElementById("add");
+  const messageEl = document.getElementById("message");
+  const machineEl = document.getElementById("machine");
+  const reelsEl = Array.from(document.querySelectorAll(".reel .strip"));
+
+  // --- AUDIO (tiny WebAudio beeps, no files needed) ---
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  let audioCtx;
+  function ensureAudio(){
+    if(!audioCtx){ audioCtx = new AudioCtx(); }
+  }
+  function beep(freq=440, dur=0.08, type="sine", gain=0.04){
+    if(!audioCtx) return;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.value = gain;
+    o.connect(g).connect(audioCtx.destination);
+    o.start();
+    o.stop(audioCtx.currentTime + dur);
+  }
+  function spinSound(){
+    ensureAudio();
+    // quick "whoosh" sweep
+    const start = audioCtx.currentTime;
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type="triangle";
+    o.frequency.setValueAtTime(140, start);
+    o.frequency.exponentialRampToValueAtTime(520, start+0.25);
+    g.gain.setValueAtTime(0.0001, start);
+    g.gain.exponentialRampToValueAtTime(0.05, start+0.08);
+    g.gain.exponentialRampToValueAtTime(0.0001, start+0.35);
+    o.connect(g).connect(audioCtx.destination);
+    o.start(start);
+    o.stop(start+0.36);
+  }
+  function winJingle(mult){
+    ensureAudio();
+    const now = audioCtx.currentTime;
+    const seq = [523,659,784,1046]; // C-E-G-C
+    seq.forEach((f,i)=>{
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type="sine";
+      o.frequency.value = f;
+      g.gain.value = 0.06 + Math.min(0.05, mult*0.003);
+      const t = now + i*0.09;
+      o.connect(g).connect(audioCtx.destination);
+      o.start(t);
+      o.stop(t+0.15);
+    });
+  }
+
+  // --- CONFETTI (simple lightweight particles) ---
+  const confettiCanvas = document.getElementById("confetti");
+  const ctx = confettiCanvas.getContext("2d");
+  let confettiParticles = [];
+  function resizeCanvas(){
+    const r = document.getElementById("reels").getBoundingClientRect();
+    confettiCanvas.width = Math.ceil(r.width);
+    confettiCanvas.height = Math.ceil(r.height);
+  }
+  window.addEventListener("resize", resizeCanvas);
+  resizeCanvas();
+
+  function launchConfetti(){
+    confettiParticles = [];
+    const W = confettiCanvas.width, H = confettiCanvas.height;
+    for(let i=0;i<120;i++){
+      confettiParticles.push({
+        x: Math.random()*W, y: -10 - Math.random()*40,
+        vx: (Math.random()-0.5)*1.2,
+        vy: 1.5 + Math.random()*1.2,
+        r: 2 + Math.random()*3,
+        life: 80 + Math.random()*60
+      });
+    }
+  }
+  function drawConfetti(){
+    ctx.clearRect(0,0,confettiCanvas.width, confettiCanvas.height);
+    confettiParticles.forEach(p=>{
+      p.x += p.vx; p.y += p.vy; p.vy += 0.02; p.life--;
+      ctx.beginPath();
+      ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.fillStyle = (p.life%3===0) ? "#39ffb6" : (p.life%5===0 ? "#ffde59" : "#9cb3d8");
+      ctx.fill();
+    });
+    confettiParticles = confettiParticles.filter(p=>p.life>0 && p.y<confettiCanvas.height+10);
+    if(confettiParticles.length>0) requestAnimationFrame(drawConfetti);
+  }
+
+  // --- UTIL ---
+  function fmt(n){ return "$" + n.toLocaleString(); }
+  function setMessage(msg, isWin=false){
+    messageEl.textContent = msg;
+    messageEl.classList.toggle("win", !!isWin);
+  }
+
+  // --- BUILD STRIPS ---
+  const SYMBOL_STRIP = [];
+  for(let i=0;i<STRIP_REPEAT;i++) SYMBOL_STRIP.push(...SYMBOLS);
+  // build DOM
+  reelsEl.forEach(strip=>{
+    strip.innerHTML = SYMBOL_STRIP.map(s=>`<div class="symbol">${s}</div>`).join("");
+  });
+
+  // --- Reel runtime state ---
+  const reels = reelsEl.map((strip, idx)=>({
+    strip,
+    pos: 0,         // px offset
+    speed: 0,       // px/ms
+    targetPos: 0,   // px to land on a whole cell alignment
+    stopping: false,
+    startTime: 0,
+    stopAfter: MIN_SPIN_MS[idx],
+    chosenTopIndex: 0
+  }));
+
+  function indexToPos(topIndex){
+    // map a top symbol index to a pixel offset (negative translateY)
+    // we add an extra small bleed to hide seams between cells
+    return topIndex * CELL;
+  }
+
+  let rafId = 0;
+  function animate(t){
+    rafId = requestAnimationFrame(animate);
+    const now = performance.now();
+    reels.forEach(r=>{
+      if(r.speed>0){
+        const dt = now - r.lastT;
+        r.lastT = now;
+        r.pos += r.speed * dt;
+        // decelerate if it's time to start stopping
+        if(now - r.startTime > r.stopAfter){
+          r.speed -= DECEL * dt;
+          if(r.speed < 0.7 && !r.stopping){
+            r.stopping = true;
+            // snap to target smoothly
+            const currentIndex = Math.floor((r.pos / CELL) % SYMBOL_STRIP.length);
+            const desiredIndex = ((r.chosenTopIndex % SYMBOL_STRIP.length) + SYMBOL_STRIP.length) % SYMBOL_STRIP.length;
+            // compute forward distance in cells
+            let deltaCells = (desiredIndex - currentIndex) % SYMBOL_STRIP.length;
+            if(deltaCells < 0) deltaCells += SYMBOL_STRIP.length;
+            // overspin a little to feel nicer
+            deltaCells += 2 + Math.floor(Math.random()*2);
+            r.targetPos = r.pos + deltaCells * CELL;
+          }
+          if(r.stopping && r.pos >= r.targetPos - 2){
+            // final snap
+            r.pos = r.targetPos;
+            r.speed = 0;
+          }
+        }
+        r.strip.style.transform = `translateY(${- (r.pos % (SYMBOL_STRIP.length*CELL))}px)`;
+      }
+    });
+
+    // check if all stopped
+    if(spinning && reels.every(r=>r.speed<=0)){
+      cancelAnimationFrame(rafId);
+      spinning = false;
+      spinBtn.disabled = false;
+      resolveOutcome();
+    }
+  }
+
+  function chooseOutcome(){
+    // for each reel, pick a symbol for the CENTER row randomly
+    const centerSymbols = reels.map(()=> SYMBOLS[Math.floor(Math.random()*SYMBOLS.length)]);
+    // compute topIndex so that center row shows that symbol
+    reels.forEach((r, i)=>{
+      const idxInStrip = SYMBOL_STRIP.findIndex(s=>s===centerSymbols[i]); // first occurrence OK because strip repeats
+      const topIdx = (idxInStrip - 1 + SYMBOL_STRIP.length) % SYMBOL_STRIP.length; // center row -> index+1
+      r.chosenTopIndex = topIdx;
+    });
+    return centerSymbols;
+  }
+
+  function evaluate(centerSymbols, bet){
+    // 3 same on center line pays
+    const [a,b,c] = centerSymbols;
+    if(a===b && b===c){
+      const mult = PAYOUTS[a] || 0;
+      return {win: bet * mult, mult};
+    }
+    return {win:0, mult:0};
+  }
+
+  function updateHud(){
+    balanceEl.textContent = fmt(balance);
+    lastWinEl.textContent = fmt(lastWin);
+    betLabel.textContent = fmt(parseInt(betInput.value || 0));
+  }
+
+  function spin(){
+    const now = Date.now();
+    if(now - lastClickAt < CLICK_SAFETY_MS) return;
+    lastClickAt = now;
+
+    const bet = Math.max(1, Math.min(500, parseInt(betInput.value||0)));
+    betInput.value = bet;
+
+    if(spinning) return;
+    if(bet > balance){
+      setMessage("Not enough credits! Click +$100 to top up.", false);
+      beep(160, 0.12, "square", 0.06);
+      return;
+    }
+
+    ensureAudio();
+    spinSound();
+
+    balance -= bet;
+    lastWin = 0;
+    updateHud();
+    setMessage("Spinning... 🍀");
+
+    // choose outcome before spin so we can land precisely
+    const center = chooseOutcome();
+
+    // start all reels
+    reels.forEach((r,i)=>{
+      r.startTime = performance.now();
+      r.lastT = r.startTime;
+      r.stopAfter = MIN_SPIN_MS[i] + Math.random()*300; // tiny randomness
+      r.speed = START_SPEED + Math.random()*0.3;
+      r.stopping = false;
+    });
+
+    spinning = true;
+    spinBtn.disabled = true;
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(animate);
+
+    // store chosen center for evaluation later
+    spin._chosenCenter = center;
+    spin._bet = bet;
+  }
+
+  function resolveOutcome(){
+    const {win, mult} = evaluate(spin._chosenCenter, spin._bet);
+    lastWin = win;
+    balance += win;
+    updateHud();
+
+    if(win>0){
+      setMessage(`WIN! ${spin._chosenCenter.join(" │ ")} → ${mult}× = ${fmt(win)} 🎉`, true);
+      winJingle(mult);
+      launchConfetti();
+      requestAnimationFrame(drawConfetti);
+    }else{
+      setMessage(`No win: ${spin._chosenCenter.join(" │ ")} — try again!`);
+      beep(220, 0.06, "sawtooth", 0.03);
+    }
+  }
+
+  // --- UI wiring ---
+  spinBtn.addEventListener("click", spin);
+  maxBtn.addEventListener("click", ()=>{
+    betInput.value = Math.min(500, balance || 1);
+    updateHud();
+    beep(640, 0.05, "square", 0.04);
+  });
+  addBtn.addEventListener("click", ()=>{
+    balance += 100;
+    updateHud();
+    beep(880, 0.06, "sine", 0.05);
+  });
+  betInput.addEventListener("input", updateHud);
+
+  // init HUD
+  updateHud();
+  setMessage("Good luck!");
+
+})();
+</script>
+</body>
+</html>
